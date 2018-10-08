@@ -36,7 +36,7 @@ function deploysecrets {
 }
 
 function deployconfigmap {
-                local sec=""        
+                local sec=""
                 local seclist=""
 
                 for sec in $( find configmaps/$ns/$pod/ -type f ); do
@@ -62,24 +62,21 @@ function deployconfigmap {
 
 #set -x
 
-workspace=/tmp/provisioning
-mani_repo="ssh://git@bitbucket.otlabs.fr/tk/nerf-k8s-objects.git"
+workspace=/src
 oldlist=/tmp/oldlist
 newlist=/tmp/newlist
+donesec=()
+donemap=()
 
 # INITIAL LIST and CLONE
-mkdir $workspace
-git clone $mani_repo $workspace
 cd $workspace
 find ! -path "./.git*" -type f -exec md5sum "{}" + > $oldlist
 
 while true; do
-        git pull 
-
 	find ! -path "./.git*" -type f -exec md5sum "{}" + > $newlist
 
         for el in $( comm -1 -3 <(sort /tmp/oldlist) <(sort /tmp/newlist) | cut -d " " -f3 ); do
-                
+
                 get_data $el
 
                 case "$el" in 
@@ -89,20 +86,28 @@ while true; do
                         *deployments*)
                                 kubectl apply -f $el 
 				;;
-                        *secrets*) 
-				deploysecrets $el 
+                        *secrets*)
+                                if [[ "${donesec[@]}" != *"$pod"* ]]; then
+                                        deploysecrets $el
+                                fi
+                                donesec+=($pod)
 				;;
                         *configmaps*) 
-				deployconfigmap $el
-				;;
+                                if [[ "${donemap[@]}" != *"$pod"* ]]; then
+                                        deployconfigmap $el
+                                fi
+                                donemap+=($pod)
+                                ;;
 
-			*)
-				echo "Unhandled file $el"
-				;;
+                        *)
+                                echo "Unhandled file $el"
+                                ;;
                 esac
         done
 
         cp $newlist $oldlist
-        
+        donesec=()
+        donemap=()
+
         sleep 10
 done
